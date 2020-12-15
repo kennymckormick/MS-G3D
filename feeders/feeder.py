@@ -74,6 +74,8 @@ class Feeder(Dataset):
         data_numpy = self.data[index]
         label = self.label[index]
         data_numpy = np.array(data_numpy)
+        if data_numpy.dtype != np.float32:
+            data_numpy = data_numpy.astype(np.float32)
 
         if self.normalization:
             data_numpy = (data_numpy - self.mean_map) / self.std_map

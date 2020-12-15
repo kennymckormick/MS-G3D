@@ -96,7 +96,7 @@ def read_xyz(file, max_body=4, num_joint=25):
     return data
 
 
-def gendata(data_path, out_path, ignored_sample_path=None, benchmark='xview', part='eval'):
+def gendata(data_path, out_path, ignored_sample_path=None, benchmark='xview', part='val'):
     if ignored_sample_path != None:
         with open(ignored_sample_path, 'r') as f:
             ignored_samples = [line.strip() + '.skeleton' for line in f.readlines()]
