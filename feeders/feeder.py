@@ -10,7 +10,7 @@ from feeders import tools
 
 
 class Feeder(Dataset):
-    def __init__(self, data_path, label_path, random_turb_joints=[],
+    def __init__(self, data_path, label_path, random_turb_joints=[5, 6, 9, 10, 13, 14, 17, 18],
                  random_turb_size=0., random_choose=False, random_shift=False,
                  random_move=False, window_size=-1, normalization=False,
                  debug=False, use_mmap=True, random_turb=False):
@@ -42,6 +42,16 @@ class Feeder(Dataset):
         if isinstance(random_turb_size, float):
             random_turb_size = [random_turb_size] * len(random_turb_joints)
         self.random_turb_size = random_turb_size
+        groups = {}
+        groups[10] = [11, 23, 24]
+        groups[6] = [7, 21, 22]
+        groups[18] = [19]
+        groups[14] = [15]
+        self.groups = groups
+        for v in groups.values():
+            for jt in v:
+                assert jt not in self.random_turb_joints
+        self.jt2ind = {jt: i for i, jt in enumerate(self.random_turb_joints)}
 
         self.load_data()
         if normalization:
@@ -80,9 +90,9 @@ class Feeder(Dataset):
         mask = (self.data[:, :2] == 0) + (self.data[:, :2] <= -0.95)
         mask = mask[:, 0] * mask[:, 1]
         # mask is of the shape: N, T, V, M (now)
-        mask = mask[:, :, self.random_turb_joints]
+        tight_mask = mask[:, :, self.random_turb_joints]
         # mask is of the shape: N, T, K, M (now)
-        theta = np.random.random(mask.shape) * np.pi
+        theta = np.random.random(tight_mask.shape) * np.pi
         delta_x, delta_y = np.cos(theta), np.sin(theta)
         delta = np.concatenate([delta_x[:, np.newaxis],
                                 delta_y[:, np.newaxis]], axis=1)
@@ -91,8 +101,16 @@ class Feeder(Dataset):
             delta[:, :, :, i] *= self.random_turb_size[i]
 
         # N, 2, T, K, M
+        tight_mask = np.concatenate([tight_mask[:, np.newaxis]] * 2, axis=1)
+        # N, 2, T, V, M
         mask = np.concatenate([mask[:, np.newaxis]] * 2, axis=1)
-        self.data[:, :2, :, self.random_turb_joints] += mask * delta
+        # By Group
+        self.data[:, :2, :, self.random_turb_joints] += tight_mask * delta
+        for k, v in self.groups:
+            if k in self.random_turb_joints:
+                k_ind = self.jt2ind[k]
+                for jt in v:
+                    self.data[:, :2, :, jt] += mask[:, :, :, jt] * delta[:, :, :, k_ind]
 
     def __len__(self):
         return len(self.label)
