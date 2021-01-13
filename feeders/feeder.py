@@ -10,9 +10,10 @@ from feeders import tools
 
 
 class Feeder(Dataset):
-    def __init__(self, data_path, label_path,
-                 random_choose=False, random_shift=False, random_move=False,
-                 window_size=-1, normalization=False, debug=False, use_mmap=True):
+    def __init__(self, data_path, label_path, random_turb_joints=[],
+                 random_turb_size=0., random_choose=False, random_shift=False,
+                 random_move=False, window_size=-1, normalization=False,
+                 debug=False, use_mmap=True, random_turb=False):
         """
         :param data_path:
         :param label_path:
@@ -34,12 +35,22 @@ class Feeder(Dataset):
         self.window_size = window_size
         self.normalization = normalization
         self.use_mmap = use_mmap
+
+        self.random_turb = random_turb
+        assert isinstance(random_turb_joints, list)
+        self.random_turb_joints = random_turb_joints
+        if isinstance(random_turb_size, float):
+            random_turb_size = [random_turb_size] * len(random_turb_joints)
+        self.random_turb_size = random_turb_size
+
         self.load_data()
         if normalization:
             self.get_mean_map()
+        if random_turb:
+            self.random_turb()
 
     def load_data(self):
-        # data: N C V T M
+        # data: N(num_samples) C(3) T(temporal_length) V(num_kp) M(num_person)
         try:
             with open(self.label_path) as f:
                 self.sample_name, self.label = pickle.load(f)
@@ -63,6 +74,25 @@ class Feeder(Dataset):
         N, C, T, V, M = data.shape
         self.mean_map = data.mean(axis=2, keepdims=True).mean(axis=4, keepdims=True).mean(axis=0)
         self.std_map = data.transpose((0, 2, 4, 1, 3)).reshape((N * T * M, C * V)).std(axis=0).reshape((C, 1, V, 1))
+
+    # Note that it only works for 2D dataset
+    def random_turb(self):
+        mask = (self.data[:, :2] == 0) + (self.data[:, :2] <= -0.95)
+        mask = mask[:, 0] * mask[:, 1]
+        # mask is of the shape: N, T, V, M (now)
+        mask = mask[:, :, self.random_turb_joints]
+        # mask is of the shape: N, T, K, M (now)
+        theta = np.random.random(mask.shape) * np.pi
+        delta_x, delta_y = np.cos(theta), np.sin(theta)
+        delta = np.concatenate([delta_x[:, np.newaxis],
+                                delta_y[:, np.newaxis]], axis=1)
+        # N, 2, T, K, M
+        for i in range(delta.shape[3]):
+            delta[:, :, :, i] *= self.random_turb_size[i]
+
+        # N, 2, T, K, M
+        mask = np.concatenate([mask[:, np.newaxis]] * 2, axis=1)
+        self.data[:, :2, :, self.random_turb_joints] += mask * delta
 
     def __len__(self):
         return len(self.label)
