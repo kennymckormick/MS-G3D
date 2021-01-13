@@ -11,7 +11,7 @@ from feeders import tools
 
 class Feeder(Dataset):
     def __init__(self, data_path, label_path, random_turb_joints=[5, 6, 9, 10, 13, 14, 17, 18],
-                 random_turb_size=0., random_choose=False, random_shift=False,
+                 random_turb_size=0., random_choose=False, random_shift=False, turb_group=None,
                  random_move=False, window_size=-1, normalization=False,
                  debug=False, use_mmap=True, random_turb=False, random_seed=1):
         """
@@ -36,6 +36,7 @@ class Feeder(Dataset):
         self.window_size = window_size
         self.normalization = normalization
         self.use_mmap = use_mmap
+        self.turb_group = turb_group
 
         self.random_turb = random_turb
         assert isinstance(random_turb_joints, list)
@@ -43,22 +44,24 @@ class Feeder(Dataset):
         if isinstance(random_turb_size, float):
             random_turb_size = [random_turb_size] * len(random_turb_joints)
         self.random_turb_size = random_turb_size
-        groups = {}
-        groups[10] = [11, 23, 24]
-        groups[6] = [7, 21, 22]
-        groups[18] = [19]
-        groups[14] = [15]
-        self.groups = groups
-        for v in groups.values():
-            for jt in v:
-                assert jt not in self.random_turb_joints
+        ntu_groups = {}
+        ntu_groups[10] = [11, 23, 24]
+        ntu_groups[6] = [7, 21, 22]
+        ntu_groups[18] = [19]
+        ntu_groups[14] = [15]
+        self.ntu_groups = ntu_groups
+        if self.turb_group == 'ntu':
+            for v in self.ntu_groups.values():
+                for jt in v:
+                    assert jt not in self.random_turb_joints
+
         self.jt2ind = {jt: i for i, jt in enumerate(self.random_turb_joints)}
 
         self.load_data()
         if normalization:
             self.get_mean_map()
         if random_turb:
-            self.random_turb()
+            self._random_turb()
 
     def load_data(self):
         # data: N(num_samples) C(3) T(temporal_length) V(num_kp) M(num_person)
@@ -87,7 +90,7 @@ class Feeder(Dataset):
         self.std_map = data.transpose((0, 2, 4, 1, 3)).reshape((N * T * M, C * V)).std(axis=0).reshape((C, 1, V, 1))
 
     # Note that it only works for 2D dataset
-    def random_turb(self):
+    def _random_turb(self):
         mask = (self.data[:, :2] == 0) + (self.data[:, :2] <= -0.95)
         mask = mask[:, 0] * mask[:, 1]
         # mask is of the shape: N, T, V, M (now)
@@ -107,11 +110,13 @@ class Feeder(Dataset):
         mask = np.concatenate([mask[:, np.newaxis]] * 2, axis=1)
         # By Group
         self.data[:, :2, :, self.random_turb_joints] += tight_mask * delta
-        for k, v in self.groups:
-            if k in self.random_turb_joints:
-                k_ind = self.jt2ind[k]
-                for jt in v:
-                    self.data[:, :2, :, jt] += mask[:, :, :, jt] * delta[:, :, :, k_ind]
+
+        if self.turb_group == 'ntu':
+            for k, v in self.ntu_groups:
+                if k in self.random_turb_joints:
+                    k_ind = self.jt2ind[k]
+                    for jt in v:
+                        self.data[:, :2, :, jt] += mask[:, :, :, jt] * delta[:, :, :, k_ind]
 
     def __len__(self):
         return len(self.label)
