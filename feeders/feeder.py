@@ -13,7 +13,7 @@ class Feeder(Dataset):
     def __init__(self, data_path, label_path, random_turb_joints=[5, 6, 9, 10, 13, 14, 17, 18],
                  random_turb_size=0., random_choose=False, random_shift=False,
                  random_move=False, window_size=-1, normalization=False,
-                 debug=False, use_mmap=True, random_turb=False):
+                 debug=False, use_mmap=True, random_turb=False, random_seed=1):
         """
         :param data_path:
         :param label_path:
@@ -26,6 +26,7 @@ class Feeder(Dataset):
         :param use_mmap: If true, use mmap mode to load data, which can save the running memory
         """
 
+        np.random.seed(random_seed)
         self.debug = debug
         self.data_path = data_path
         self.label_path = label_path
