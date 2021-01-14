@@ -12,10 +12,10 @@ from feeders import tools
 
 
 class Feeder(Dataset):
-    def __init__(self, data_path, label_path, dataset_name='gym_17p',
+    def __init__(self, data_path, dataset_name='gym_17p', maxlen=None,
                  manipulate_joints=[7, 8, 9, 10, 13, 14, 15, 16],
                  random_turb=False, random_turb_size=0.,
-                 random_drop=False, drop_per_nframe=16,
+                 random_drop=False, drop_per_nframe=16, drop_njoints=2,
                  random_seed=1, debug=False):
         """
         :param data_path:
@@ -32,13 +32,17 @@ class Feeder(Dataset):
         # The shape of 'kp' is 3 x T x K x M
         self.database = load(data_path)
         self.label = [x['label'] for x in self.database]
-        self.maxlen = max([item['kp'].shape[1] for item in self.database])
+        self.sample_name = [x['frame_dir'] for x in self.database]
+        self.maxlen = maxlen
+        if self.maxlen is None:
+            self.maxlen = max([item['kp'].shape[1] for item in self.database])
 
-        assert isinstance(self.manipulate_joints, list)
+        assert isinstance(manipulate_joints, list)
         self.manipulate_joints = manipulate_joints
 
         self.random_drop = random_drop
         self.drop_per_nframe = drop_per_nframe
+        self.drop_njoints = drop_njoints
 
         self.random_turb = random_turb
         if isinstance(random_turb_size, float):
@@ -95,8 +99,11 @@ class Feeder(Dataset):
         tlen = data.shape[1]
         for tidx in range(tlen):
             if np.random.random() < 1. / self.drop_per_nframe:
-                jidx = np.random.choice(self.manipulate_joints)
-                data[:, tidx, jidx, :] = 0.
+                jidxs = np.random.choice(self.manipulate_joints,
+                                         size=self.drop_njoints,
+                                         replace=False)
+                for jidx in jidxs:
+                    data[:, tidx, jidx, :] = 0.
         return data
 
     def _pad_to(self, data, length):
@@ -114,6 +121,7 @@ class Feeder(Dataset):
     def __getitem__(self, index):
         data = self.database[index]
         data_numpy = cp.deepcopy(data['kp'])
+        data_numpy = data_numpy.transpose([3, 1, 2, 0])
         label = data['label']
         if self.random_turb:
             data_numpy = self._random_turb(data_numpy)
