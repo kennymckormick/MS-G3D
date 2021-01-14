@@ -10,10 +10,9 @@ from feeders import tools
 
 
 class Feeder(Dataset):
-    def __init__(self, data_path, label_path, random_turb_joints=[5, 6, 9, 10, 13, 14, 17, 18],
-                 random_turb_size=0., random_choose=False, random_shift=False, turb_group=None,
-                 random_move=False, window_size=-1, normalization=False,
-                 debug=False, use_mmap=True, random_turb=False, random_seed=1):
+    def __init__(self, data_path, label_path,
+                 random_choose=False, random_shift=False, random_move=False,
+                 window_size=-1, normalization=False, debug=False, use_mmap=True):
         """
         :param data_path:
         :param label_path:
@@ -26,7 +25,6 @@ class Feeder(Dataset):
         :param use_mmap: If true, use mmap mode to load data, which can save the running memory
         """
 
-        np.random.seed(random_seed)
         self.debug = debug
         self.data_path = data_path
         self.label_path = label_path
@@ -36,35 +34,12 @@ class Feeder(Dataset):
         self.window_size = window_size
         self.normalization = normalization
         self.use_mmap = use_mmap
-        self.turb_group = turb_group
-
-        self.random_turb = random_turb
-        assert isinstance(random_turb_joints, list)
-        self.random_turb_joints = random_turb_joints
-        if isinstance(random_turb_size, float):
-            random_turb_size = [random_turb_size] * len(random_turb_joints)
-        self.random_turb_size = random_turb_size
-        ntu_groups = {}
-        ntu_groups[10] = [11, 23, 24]
-        ntu_groups[6] = [7, 21, 22]
-        ntu_groups[18] = [19]
-        ntu_groups[14] = [15]
-        self.ntu_groups = ntu_groups
-        if self.turb_group == 'ntu':
-            for v in self.ntu_groups.values():
-                for jt in v:
-                    assert jt not in self.random_turb_joints
-
-        self.jt2ind = {jt: i for i, jt in enumerate(self.random_turb_joints)}
-
         self.load_data()
         if normalization:
             self.get_mean_map()
-        if random_turb:
-            self._random_turb()
 
     def load_data(self):
-        # data: N(num_samples) C(3) T(temporal_length) V(num_kp) M(num_person)
+        # data: N C V T M
         try:
             with open(self.label_path) as f:
                 self.sample_name, self.label = pickle.load(f)
@@ -89,35 +64,6 @@ class Feeder(Dataset):
         self.mean_map = data.mean(axis=2, keepdims=True).mean(axis=4, keepdims=True).mean(axis=0)
         self.std_map = data.transpose((0, 2, 4, 1, 3)).reshape((N * T * M, C * V)).std(axis=0).reshape((C, 1, V, 1))
 
-    # Note that it only works for 2D dataset
-    def _random_turb(self):
-        mask = (self.data[:, :2] == 0) + (self.data[:, :2] <= -0.95)
-        mask = mask[:, 0] * mask[:, 1]
-        # mask is of the shape: N, T, V, M (now)
-        tight_mask = mask[:, :, self.random_turb_joints]
-        # mask is of the shape: N, T, K, M (now)
-        theta = np.random.random(tight_mask.shape) * np.pi
-        delta_x, delta_y = np.cos(theta), np.sin(theta)
-        delta = np.concatenate([delta_x[:, np.newaxis],
-                                delta_y[:, np.newaxis]], axis=1)
-        # N, 2, T, K, M
-        for i in range(delta.shape[3]):
-            delta[:, :, :, i] *= self.random_turb_size[i]
-
-        # N, 2, T, K, M
-        tight_mask = np.concatenate([tight_mask[:, np.newaxis]] * 2, axis=1)
-        # N, 2, T, V, M
-        mask = np.concatenate([mask[:, np.newaxis]] * 2, axis=1)
-        # By Group
-        self.data[:, :2, :, self.random_turb_joints] += tight_mask * delta
-
-        if self.turb_group == 'ntu':
-            for k, v in self.ntu_groups:
-                if k in self.random_turb_joints:
-                    k_ind = self.jt2ind[k]
-                    for jt in v:
-                        self.data[:, :2, :, jt] += mask[:, :, :, jt] * delta[:, :, :, k_ind]
-
     def __len__(self):
         return len(self.label)
 
@@ -128,8 +74,6 @@ class Feeder(Dataset):
         data_numpy = self.data[index]
         label = self.label[index]
         data_numpy = np.array(data_numpy)
-        if data_numpy.dtype != np.float32:
-            data_numpy = data_numpy.astype(np.float32)
 
         if self.normalization:
             data_numpy = (data_numpy - self.mean_map) / self.std_map
