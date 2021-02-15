@@ -131,14 +131,16 @@ class Feeder(Dataset):
         else:
             # We are loading Kinetics, and the dataset is too large
             assert 'kinetics_kp' in data
+            assert 'inds' in data
             kinetics_kp = data['kinetics_kp']
-            num_frame = len(kinetics_kp)
+            inds = data['inds']
+            num_frame = inds.shape[0]
             data_numpy = np.zeros([self.kinetics_max_person, num_frame, 17, 3],
                                    dtype=np.float16)
             for i in range(num_frame):
-                kp = kinetics_kp[i]
-                num_person = min(self.kinetics_max_person, kp.shape[0])
-                data_numpy[:num_person, i] = kp[:num_person]
+                st, ed = inds[i]
+                num_person = min(self.kinetics_max_person, ed - st)
+                data_numpy[:num_person, i] = kinetics_kp[st: st + num_person]
             data_numpy = data_numpy.transpose([3, 1, 2, 0])
 
         label = data['label']
