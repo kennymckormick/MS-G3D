@@ -16,7 +16,7 @@ class Feeder(Dataset):
                  manipulate_joints=[7, 8, 9, 10, 13, 14, 15, 16],
                  random_turb=False, random_turb_size=0.,
                  random_drop=False, drop_per_nframe=16, drop_njoints=2,
-                 random_seed=1, debug=False):
+                 random_seed=1, kinetics_max_person=1, debug=False):
         """
         :param data_path:
         :param label_path:
@@ -27,6 +27,7 @@ class Feeder(Dataset):
         self.debug = debug
         self.data_path = data_path
         self.dataset_name = dataset_name
+        self.kinetics_max_person = kinetics_max_person
 
         # A list, each is a dictionary with keys 'kp', 'label', 'name'
         # The shape of 'kp' is 3 x T x K x M
@@ -120,8 +121,22 @@ class Feeder(Dataset):
 
     def __getitem__(self, index):
         data = self.database[index]
-        data_numpy = cp.deepcopy(data['kp'])
-        data_numpy = data_numpy.transpose([3, 1, 2, 0])
+        if 'kp' in data:
+            data_numpy = cp.deepcopy(data['kp'])
+            data_numpy = data_numpy.transpose([3, 1, 2, 0])
+        else:
+            # We are loading Kinetics, and the dataset is too large
+            assert 'kinetics_kp' in data
+            kinetics_kp = data['kinetics_kp']
+            num_frame = len(kinetics_kp)
+            data_numpy = np.zeros([self.kinetics_max_person, num_frame, 17, 3],
+                                   dtype=np.float16)
+            for i in range(num_frame):
+                kp = kinetics_kp[i]
+                num_person = min(self.kinetics_max_person, kp.shape[0])
+                data_numpy[:num_person, i] = kp[:num_person]
+            data_numpy = data_numpy.transpose([3, 1, 2, 0])
+
         label = data['label']
         if self.random_turb:
             data_numpy = self._random_turb(data_numpy)
