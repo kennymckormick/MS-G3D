@@ -32,6 +32,10 @@ class Feeder(Dataset):
         # A list, each is a dictionary with keys 'kp', 'label', 'name'
         # The shape of 'kp' is 3 x T x K x M
         self.database = load(data_path)
+        # remove None
+        self.database = [x for x in self.database if x is not None]
+        num_samples = len(self.database)
+        print(f'{num_samples} annotations are valid! ')
         self.label = [x['label'] for x in self.database]
         self.sample_name = [x['frame_dir'] for x in self.database]
         self.maxlen = maxlen
