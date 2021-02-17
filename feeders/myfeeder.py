@@ -14,7 +14,7 @@ from feeders import tools
 class Feeder(Dataset):
     def __init__(self, data_path, dataset_name='gym_17p', maxlen=None,
                  manipulate_joints=[7, 8, 9, 10, 13, 14, 15, 16],
-                 random_turb=False, random_turb_size=0.,
+                 random_turb=False, random_turb_size=0., squeeze=False,
                  random_drop=False, drop_per_nframe=16, drop_njoints=2,
                  random_seed=1, kinetics_max_person=1, debug=False):
         """
@@ -27,7 +27,9 @@ class Feeder(Dataset):
         self.debug = debug
         self.data_path = data_path
         self.dataset_name = dataset_name
+        # squeeze is an option for mmkpose
         self.kinetics_max_person = kinetics_max_person
+        self.squeeze = squeeze
 
         # A list, each is a dictionary with keys 'kp', 'label', 'name'
         # The shape of 'kp' is 3 x T x K x M
@@ -137,10 +139,15 @@ class Feeder(Dataset):
             num_frame = inds.shape[0]
             data_numpy = np.zeros([self.kinetics_max_person, num_frame, 17, 3],
                                    dtype=np.float16)
+            cnt = 0
             for i in range(num_frame):
                 st, ed = inds[i]
                 num_person = min(self.kinetics_max_person, ed - st)
-                data_numpy[:num_person, i] = kinetics_kp[st: st + num_person]
+                if self.squeeze and num_person == 0:
+                    continue
+                data_numpy[:num_person, cnt] = kinetics_kp[st: st + num_person]
+                cnt += 1
+            data_numpy = data_numpy[:, :cnt]
             data_numpy = data_numpy.transpose([3, 1, 2, 0])
 
         label = data['label']
